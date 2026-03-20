@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>我的日记本</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- 顶部导航栏 -->
+  <header class="navbar">
+    <div class="navbar-left">
+      <button id="btn-back" class="btn-icon hidden" title="返回">&#8592;</button>
+      <h1 id="navbar-title">我的日记本</h1>
+    </div>
+    <div class="navbar-right">
+      <span id="save-indicator" class="save-indicator"></span>
+      <button id="btn-theme" class="btn-icon" title="切换主题">&#9790;</button>
+      <button id="btn-data-mgmt" class="btn-text" title="数据管理">数据管理</button>
+    </div>
+  </header>
+
+  <!-- 主内容区 -->
+  <main id="app">
+
+    <!-- ====== 视图0：欢迎页 - 选择数据文件 ====== -->
+    <section id="view-welcome" class="view active">
+      <div class="welcome-container">
+        <div class="welcome-card">
+          <div class="welcome-icon">📔</div>
+          <h2 class="welcome-title">我的日记本</h2>
+          <p class="welcome-desc">数据保存在你自己的文件里，换浏览器、换电脑都能打开</p>
+
+          <button id="btn-reopen-file" class="btn-welcome-primary hidden">
+            <span class="btn-welcome-icon">🔄</span>
+            <span class="btn-welcome-text">
+              <strong>重新打开上次的文件</strong>
+              <small id="reopen-file-desc">diary_data.json</small>
+            </span>
+          </button>
+
+          <div class="welcome-divider">
+            <span>或者</span>
+          </div>
+
+          <button id="btn-new-file" class="btn-welcome-secondary">
+            <span class="btn-welcome-icon">✨</span>
+            <span class="btn-welcome-text">
+              <strong>新建数据文件</strong>
+              <small>创建一个新的日记数据文件</small>
+            </span>
+          </button>
+
+          <button id="btn-open-file" class="btn-welcome-secondary">
+            <span class="btn-welcome-icon">📂</span>
+            <span class="btn-welcome-text">
+              <strong>打开已有数据文件</strong>
+              <small>打开已存在的 diary_data.json</small>
+            </span>
+          </button>
+
+          <div class="welcome-note">
+            <p>数据完全存在你的电脑上，无需联网，无需注册</p>
+            <p>支持浏览器：Chrome 86+、Edge 86+、Safari 15.2+</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ====== 视图：不支持此浏览器 ====== -->
+    <section id="view-unsupported" class="view">
+      <div class="welcome-container">
+        <div class="welcome-card">
+          <div class="welcome-icon">⚠️</div>
+          <h2 class="welcome-title">浏览器不兼容</h2>
+          <p class="welcome-desc">你当前使用的浏览器不支持本地文件读写功能（File System Access API）</p>
+          <div class="welcome-note" style="text-align:left; margin-top: 20px;">
+            <p><strong>支持的浏览器：</strong></p>
+            <p>• Chrome 86 及以上版本</p>
+            <p>• Edge 86 及以上版本</p>
+            <p>• Safari 15.2 及以上版本（macOS/iOS）</p>
+            <br/>
+            <p><strong>不支持的浏览器：</strong></p>
+            <p>• Firefox（暂不支持此 API）</p>
+            <br/>
+            <p>请切换到支持的浏览器后重新打开此页面。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ====== 视图1：首页 - 日记本网格 ====== -->
+    <section id="view-home" class="view">
+      <div class="view-header">
+        <p class="subtitle">共 <span id="books-count">0</span> 本日记</p>
+        <button id="btn-new-book" class="btn-primary">+ 新建日记本</button>
+      </div>
+      <div id="books-grid" class="books-grid">
+        <!-- 日记本卡片由 JS 渲染 -->
+      </div>
+      <div id="books-empty" class="empty-state hidden">
+        <div class="empty-icon">📔</div>
+        <p>还没有日记本</p>
+        <p class="empty-sub">点击"新建日记本"开始记录你的故事</p>
+      </div>
+    </section>
+
+    <!-- ====== 视图2：日记本详情 - 条目列表 ====== -->
+    <section id="view-book" class="view">
+      <div class="book-hero">
+        <div id="book-cover-display" class="book-cover-display">
+          <span class="book-cover-placeholder">📖</span>
+        </div>
+        <div class="book-hero-info">
+          <h2 id="book-title-display">日记本名称</h2>
+          <p id="book-meta-display" class="book-meta"></p>
+          <div class="book-actions">
+            <button id="btn-edit-book" class="btn-secondary">编辑封面</button>
+            <button id="btn-delete-book" class="btn-danger-text">删除日记本</button>
+          </div>
+        </div>
+      </div>
+      <div class="view-header">
+        <p class="subtitle">共 <span id="entries-count">0</span> 篇日记</p>
+        <button id="btn-new-entry" class="btn-primary">+ 新建日记</button>
+      </div>
+      <div id="entries-list" class="entries-list">
+        <!-- 条目卡片由 JS 渲染 -->
+      </div>
+      <div id="entries-empty" class="empty-state hidden">
+        <div class="empty-icon">✏️</div>
+        <p>这本日记还没有内容</p>
+        <p class="empty-sub">点击"新建日记"开始书写</p>
+      </div>
+    </section>
+
+    <!-- ====== 视图3：条目编辑页 ====== -->
+    <section id="view-entry" class="view">
+      <div class="entry-meta-bar">
+        <div class="entry-dates">
+          <span id="entry-created-display"></span>
+          <span id="entry-updated-display"></span>
+        </div>
+        <div class="entry-actions">
+          <button id="btn-entry-image" class="btn-secondary">插入图片</button>
+          <button id="btn-save-entry" class="btn-primary">保存</button>
+          <button id="btn-delete-entry" class="btn-danger-text">删除</button>
+        </div>
+      </div>
+      <input
+        id="entry-title-input"
+        class="entry-title-input"
+        type="text"
+        placeholder="日记标题（可留空）"
+        maxlength="100"
+      />
+      <div id="entry-images-preview" class="entry-images-preview"></div>
+      <textarea
+        id="entry-content-input"
+        class="entry-content-input"
+        placeholder="今天发生了什么......"
+      ></textarea>
+      <input id="entry-image-file" type="file" accept="image/*" multiple class="hidden" />
+    </section>
+
+    <!-- ====== 视图4：数据管理页 ====== -->
+    <section id="view-data" class="view">
+      <div class="data-mgmt-container">
+
+        <div class="data-card">
+          <h3>当前数据文件</h3>
+          <div class="file-info-row">
+            <span class="file-icon">📄</span>
+            <div class="file-info-text">
+              <strong id="current-file-name">未知文件</strong>
+              <span class="file-info-meta">存储在你电脑上的任意位置</span>
+            </div>
+          </div>
+          <div class="data-stats">
+            <div class="stat-item">
+              <span class="stat-num" id="stat-books">0</span>
+              <span class="stat-label">日记本</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-num" id="stat-entries">0</span>
+              <span class="stat-label">日记条目</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-num" id="stat-images">0</span>
+              <span class="stat-label">图片</span>
+            </div>
+          </div>
+          <div class="size-info">
+            <div class="size-row">
+              <span>文件总大小</span>
+              <span id="file-size-display">—</span>
+            </div>
+            <div class="size-row">
+              <span>其中图片数据</span>
+              <span id="img-size-display">—</span>
+            </div>
+          </div>
+          <button id="btn-refresh-stats" class="btn-secondary btn-full">刷新统计</button>
+        </div>
+
+        <div class="data-card">
+          <h3>数据位置说明</h3>
+          <div class="data-location-info">
+            <div class="location-item">
+              <div class="location-icon">📄</div>
+              <div>
+                <strong>数据文件</strong>
+                <p>你在欢迎页选择或新建的那个 .json 文件，存放在你电脑上你指定的位置（桌面、文档等任意目录）。</p>
+              </div>
+            </div>
+            <div class="location-item">
+              <div class="location-icon">🌐</div>
+              <div>
+                <strong>跨浏览器访问</strong>
+                <p>任何支持的浏览器（Chrome、Edge、Safari）都可以打开同一个数据文件，数据完全一致。</p>
+              </div>
+            </div>
+            <div class="location-item">
+              <div class="location-icon">💡</div>
+              <div>
+                <strong>换电脑</strong>
+                <p>直接把数据文件复制到新电脑，用新浏览器"打开已有数据文件"选择它即可。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="data-card">
+          <h3>下载备份副本</h3>
+          <p class="card-desc">将当前数据文件的所有内容下载一份副本到本地，用于额外备份。数据文件本身不受影响。</p>
+          <button id="btn-export" class="btn-primary btn-full">⬇ 下载备份副本</button>
+          <div id="export-progress" class="progress-info hidden"></div>
+        </div>
+
+        <div class="data-card">
+          <h3>从备份文件导入</h3>
+          <p class="card-desc">从之前下载的备份文件恢复数据到当前数据文件。<strong>注意：此操作会覆盖当前数据文件中的所有内容！</strong></p>
+          <label class="btn-secondary btn-full btn-file-label">
+            ⬆ 选择备份文件导入
+            <input id="import-file-input" type="file" accept=".json" class="hidden" />
+          </label>
+          <div id="import-progress" class="progress-info hidden"></div>
+        </div>
+
+        <div class="data-card">
+          <h3>切换数据文件</h3>
+          <p class="card-desc">切换到另一个数据文件使用。当前文件不会被修改。</p>
+          <button id="btn-switch-file" class="btn-secondary btn-full">切换数据文件</button>
+        </div>
+
+        <div class="data-card danger-card">
+          <h3>危险操作</h3>
+          <p class="card-desc">清空当前数据文件中的所有数据，此操作无法撤销。</p>
+          <button id="btn-clear-all" class="btn-danger">清空全部数据</button>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ====== 弹窗：新建/编辑日记本 ====== -->
+  <div id="modal-book" class="modal-overlay hidden">
+    <div class="modal-box">
+      <h3 id="modal-book-title">新建日记本</h3>
+      <div class="form-group">
+        <label>日记本名称</label>
+        <input id="modal-book-name" type="text" placeholder="给这本日记起个名字" maxlength="50" />
+      </div>
+      <div class="form-group">
+        <label>封面图片（可选）</label>
+        <div class="cover-upload-area" id="cover-upload-area">
+          <img id="cover-preview" src="" alt="" class="hidden" />
+          <div id="cover-upload-placeholder">
+            <span>点击上传封面图</span>
+          </div>
+          <input id="cover-file-input" type="file" accept="image/*" class="hidden" />
+        </div>
+        <button id="btn-remove-cover" class="btn-danger-text hidden">移除封面图</button>
+      </div>
+      <div class="modal-actions">
+        <button id="modal-book-cancel" class="btn-secondary">取消</button>
+        <button id="modal-book-confirm" class="btn-primary">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== 弹窗：通用确认 ====== -->
+  <div id="modal-confirm" class="modal-overlay hidden">
+    <div class="modal-box">
+      <h3 id="confirm-title">确认操作</h3>
+      <p id="confirm-message"></p>
+      <div class="modal-actions">
+        <button id="confirm-cancel" class="btn-secondary">取消</button>
+        <button id="confirm-ok" class="btn-danger">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== 吐司通知 ====== -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
