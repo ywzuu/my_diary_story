@@ -46,6 +46,17 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
+function showLoading(msg = '正在读取数据文件...') {
+  const overlay = document.getElementById('loading-overlay');
+  const msgEl = document.getElementById('loading-message');
+  if (msgEl) msgEl.textContent = msg;
+  overlay.classList.remove('hidden');
+}
+
+function hideLoading() {
+  document.getElementById('loading-overlay').classList.add('hidden');
+}
+
 let toastTimer = null;
 function showToast(msg, duration = 2200) {
   const el = document.getElementById('toast');
@@ -176,10 +187,20 @@ async function loadFromHandle(handle) {
   const text = await file.text();
   const data = JSON.parse(text);
   if (!data.books || !data.entries) throw new Error('文件格式不正确');
+  const books = (data.books || []).map((b, idx) => ({
+    pinned: false,
+    sortOrder: idx,
+    ...b,
+  }));
+  const entries = (data.entries || []).map(e => ({
+    mood: '',
+    tags: [],
+    ...e,
+  }));
   appData = {
     version: data.version || 2,
-    books: data.books || [],
-    entries: data.entries || [],
+    books,
+    entries,
     images: data.images || [],
   };
   fileHandle = handle;
@@ -207,10 +228,10 @@ function updateFileInfo(name) {
 }
 
 let _saveIndicatorTimer = null;
-function showSaveIndicator() {
+function showSaveIndicator(msg = '已保存') {
   const el = document.getElementById('save-indicator');
   if (!el) return;
-  el.textContent = '已保存';
+  el.textContent = msg;
   el.classList.add('visible');
   if (_saveIndicatorTimer) clearTimeout(_saveIndicatorTimer);
   _saveIndicatorTimer = setTimeout(() => el.classList.remove('visible'), 2000);
@@ -258,10 +279,13 @@ async function handleReopenFile() {
   try {
     const granted = await handle.requestPermission({ mode: 'readwrite' });
     if (granted !== 'granted') { showToast('需要文件访问权限'); return; }
+    showLoading('正在读取数据文件...');
     await loadFromHandle(handle);
+    hideLoading();
     await renderHome();
     showView('home');
   } catch (err) {
+    hideLoading();
     showToast('无法打开文件：' + err.message);
     await clearPersistedHandle();
     document.getElementById('btn-reopen-file').classList.add('hidden');
@@ -296,10 +320,13 @@ async function handleOpenFile() {
     });
     const granted = await handle.requestPermission({ mode: 'readwrite' });
     if (granted !== 'granted') { showToast('需要文件读写权限'); return; }
+    showLoading('正在读取数据文件...');
     await loadFromHandle(handle);
+    hideLoading();
     await renderHome();
     showView('home');
   } catch (err) {
+    hideLoading();
     if (err.name !== 'AbortError') showToast('打开文件失败：' + err.message);
   }
 }
@@ -366,6 +393,20 @@ async function saveImageFile(file) {
 let currentView = 'welcome';
 let currentBookId = null;
 let currentEntryId = null;
+let _entrySearchQuery = '';
+let _bookSortOrder = 'custom';
+let _isDirty = false;
+
+function markDirty() { _isDirty = true; }
+function markClean() { _isDirty = false; }
+
+function debounce(fn, delay) {
+  let timer = null;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), delay);
+  };
+}
 
 function showView(viewName) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -507,7 +548,7 @@ async function confirmBookModal() {
   }
 
   if (_bookModalMode === 'create') {
-    const book = { id: genId(), name, coverImageId: coverImageId || null, createdAt: now, updatedAt: now };
+    const book = { id: genId(), name, coverImageId: coverImageId || null, createdAt: now, updatedAt: now, pinned: false, sortOrder: appData.books.length };
     appData.books.push(book);
     showToast('日记本已创建');
   } else {
@@ -533,11 +574,41 @@ async function confirmBookModal() {
 // 首页渲染
 // ============================================================
 
+function getSortedBooks() {
+  const books = [...getBooks()];
+  const pinned = books.filter(b => b.pinned);
+  const unpinned = books.filter(b => !b.pinned);
+
+  const sortFn = (a, b) => {
+    switch (_bookSortOrder) {
+      case 'updated': return new Date(b.updatedAt) - new Date(a.updatedAt);
+      case 'created': return new Date(b.createdAt) - new Date(a.createdAt);
+      case 'entries': return getEntriesByBook(b.id).length - getEntriesByBook(a.id).length;
+      case 'name': return a.name.localeCompare(b.name, 'zh');
+      default: return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+    }
+  };
+
+  return [...pinned.sort(sortFn), ...unpinned.sort(sortFn)];
+}
+
+async function togglePinBook(bookId, event) {
+  event.stopPropagation();
+  const idx = appData.books.findIndex(b => b.id === bookId);
+  if (idx === -1) return;
+  appData.books[idx].pinned = !appData.books[idx].pinned;
+  await saveToFile();
+  await renderHome();
+}
+
 async function renderHome() {
   const books = getBooks();
   const grid = document.getElementById('books-grid');
   const empty = document.getElementById('books-empty');
   document.getElementById('books-count').textContent = books.length;
+
+  const sortSelect = document.getElementById('books-sort');
+  if (sortSelect) sortSelect.value = _bookSortOrder;
 
   grid.innerHTML = '';
 
@@ -547,9 +618,9 @@ async function renderHome() {
   }
   empty.classList.add('hidden');
 
-  for (const book of books) {
+  for (const book of getSortedBooks()) {
     const card = document.createElement('div');
-    card.className = 'book-card';
+    card.className = 'book-card' + (book.pinned ? ' pinned' : '');
     card.dataset.bookId = book.id;
 
     let coverHtml = `<div class="book-card-cover-placeholder">📔</div>`;
@@ -559,13 +630,16 @@ async function renderHome() {
     }
 
     const entries = getEntriesByBook(book.id);
+    const pinIcon = book.pinned ? '📌' : '📍';
     card.innerHTML = `
+      <button class="book-pin-btn ${book.pinned ? 'is-pinned' : ''}" title="${book.pinned ? '取消置顶' : '置顶'}">${pinIcon}</button>
       ${coverHtml}
       <div class="book-card-body">
         <div class="book-card-name">${escapeHtml(book.name)}</div>
         <div class="book-card-meta">${entries.length} 篇 · ${formatDateShort(book.updatedAt)}</div>
       </div>
     `;
+    card.querySelector('.book-pin-btn').addEventListener('click', e => togglePinBook(book.id, e));
     card.addEventListener('click', () => navigateToBook(book.id));
     grid.appendChild(card);
   }
@@ -577,6 +651,9 @@ async function renderHome() {
 
 async function navigateToBook(bookId) {
   currentBookId = bookId;
+  _entrySearchQuery = '';
+  const searchInput = document.getElementById('entries-search');
+  if (searchInput) searchInput.value = '';
   await renderBookView(bookId);
   showView('book');
 }
@@ -587,10 +664,18 @@ async function renderBookView(bookId) {
 
   document.getElementById('book-title-display').textContent = book.name;
 
-  const entries = getEntriesByBook(bookId);
-  document.getElementById('entries-count').textContent = entries.length;
+  const allEntries = getEntriesByBook(bookId);
+  document.getElementById('entries-count').textContent = allEntries.length;
   document.getElementById('book-meta-display').textContent =
     `创建于 ${formatDate(book.createdAt)}`;
+
+  const q = _entrySearchQuery.trim().toLowerCase();
+  const entries = q
+    ? allEntries.filter(e =>
+        (e.title || '').toLowerCase().includes(q) ||
+        (e.content || '').toLowerCase().includes(q)
+      )
+    : allEntries;
 
   const coverDisplay = document.getElementById('book-cover-display');
   coverDisplay.innerHTML = '';
@@ -614,6 +699,9 @@ async function renderBookView(bookId) {
 
   if (entries.length === 0) {
     empty.classList.remove('hidden');
+    empty.innerHTML = q
+      ? `<div class="empty-icon">🔍</div><p>未找到匹配的日记</p><p class="empty-sub">试试其他关键词</p>`
+      : `<div class="empty-icon">✏️</div><p>这本日记还没有内容</p><p class="empty-sub">点击"新建日记"开始书写</p>`;
     return;
   }
   empty.classList.add('hidden');
@@ -635,11 +723,16 @@ async function renderBookView(bookId) {
       ? `编辑于 ${formatDate(entry.updatedAt)}`
       : '';
 
+    const moodHtml = entry.mood ? `<span class="entry-card-mood">${entry.mood}</span>` : '';
+    const tagsHtml = (entry.tags && entry.tags.length > 0)
+      ? `<div class="entry-card-tags">${entry.tags.map(t => `<span class="entry-card-tag">${escapeHtml(t)}</span>`).join('')}</div>`
+      : '';
     card.innerHTML = `
       ${thumbHtml}
       <div class="entry-card-body">
-        <div class="entry-card-title">${escapeHtml(title)}</div>
+        <div class="entry-card-title">${moodHtml}${escapeHtml(title)}</div>
         <div class="entry-card-excerpt">${escapeHtml(excerpt) || '<span style="opacity:0.5">（空白日记）</span>'}</div>
+        ${tagsHtml}
         <div class="entry-card-dates">
           创建于 ${formatDate(entry.createdAt)}
           ${updated ? ' · ' + updated : ''}
@@ -657,11 +750,16 @@ async function renderBookView(bookId) {
 
 let _currentEntryImageIds = [];
 let _removedImageIds = [];
+let _currentMood = '';
+let _currentTags = [];
 
 async function navigateToEntry(entryId) {
   currentEntryId = entryId;
   _currentEntryImageIds = [];
   _removedImageIds = [];
+  _currentMood = '';
+  _currentTags = [];
+  markClean();
 
   const entry = getEntries().find(e => e.id === entryId);
 
@@ -673,6 +771,8 @@ async function navigateToEntry(entryId) {
     document.getElementById('entry-updated-display').textContent =
       entry.updatedAt !== entry.createdAt ? '编辑于 ' + formatDate(entry.updatedAt) : '';
     _currentEntryImageIds = [...(entry.imageIds || [])];
+    _currentMood = entry.mood || '';
+    _currentTags = [...(entry.tags || [])];
   } else {
     document.getElementById('entry-title-input').value = '';
     document.getElementById('entry-content-input').value = '';
@@ -680,6 +780,8 @@ async function navigateToEntry(entryId) {
     document.getElementById('entry-updated-display').textContent = '';
   }
 
+  renderMoodSelector();
+  renderTagChips();
   renderEntryImages();
   showView('entry');
 }
@@ -692,12 +794,39 @@ async function createNewEntry() {
     title: '',
     content: '',
     imageIds: [],
+    mood: '',
+    tags: [],
     createdAt: now,
     updatedAt: now,
   };
   appData.entries.push(entry);
   await saveToFile();
   await navigateToEntry(entry.id);
+}
+
+function renderMoodSelector() {
+  document.querySelectorAll('.mood-btn[data-mood]').forEach(btn => {
+    btn.classList.toggle('selected', btn.dataset.mood === _currentMood);
+  });
+  const clearBtn = document.getElementById('btn-clear-mood');
+  if (clearBtn) clearBtn.classList.toggle('hidden', !_currentMood);
+}
+
+function renderTagChips() {
+  const container = document.getElementById('entry-tag-chips');
+  if (!container) return;
+  container.innerHTML = '';
+  _currentTags.forEach((tag, idx) => {
+    const chip = document.createElement('span');
+    chip.className = 'tag-chip';
+    chip.innerHTML = `${escapeHtml(tag)}<button data-idx="${idx}" title="移除标签">✕</button>`;
+    chip.querySelector('button').addEventListener('click', () => {
+      _currentTags.splice(idx, 1);
+      markDirty();
+      renderTagChips();
+    });
+    container.appendChild(chip);
+  });
 }
 
 function renderEntryImages() {
@@ -715,6 +844,7 @@ function renderEntryImages() {
     item.querySelector('.entry-image-remove').addEventListener('click', () => {
       _removedImageIds.push(imgId);
       _currentEntryImageIds = _currentEntryImageIds.filter(id => id !== imgId);
+      markDirty();
       renderEntryImages();
     });
     preview.appendChild(item);
@@ -732,6 +862,8 @@ async function saveEntry() {
   appData.entries[idx].title = title;
   appData.entries[idx].content = content;
   appData.entries[idx].imageIds = [..._currentEntryImageIds];
+  appData.entries[idx].mood = _currentMood;
+  appData.entries[idx].tags = [..._currentTags];
   appData.entries[idx].updatedAt = now;
 
   // 清理被移除的图片
@@ -741,6 +873,7 @@ async function saveEntry() {
   _removedImageIds = [];
 
   await saveToFile();
+  markClean();
 
   document.getElementById('entry-updated-display').textContent =
     '编辑于 ' + formatDate(now);
@@ -763,6 +896,52 @@ async function deleteEntry(entryId) {
   showView('book');
 }
 
+function openMoveEntryModal() {
+  const otherBooks = getBooks().filter(b => b.id !== currentBookId);
+  const list = document.getElementById('move-entry-book-list');
+  list.innerHTML = '';
+
+  if (otherBooks.length === 0) {
+    list.innerHTML = '<p style="color:var(--text-secondary);font-size:0.88rem;text-align:center;padding:16px 0">只有一本日记本，无法移动</p>';
+  } else {
+    for (const book of otherBooks) {
+      const item = document.createElement('div');
+      item.className = 'move-book-item';
+      const cnt = getEntriesByBook(book.id).length;
+      item.innerHTML = `
+        <div>
+          <div class="move-book-item-name">${escapeHtml(book.name)}</div>
+          <div class="move-book-item-meta">${cnt} 篇日记</div>
+        </div>
+      `;
+      item.addEventListener('click', () => confirmMoveEntry(book.id));
+      list.appendChild(item);
+    }
+  }
+
+  document.getElementById('modal-move-entry').classList.remove('hidden');
+}
+
+async function confirmMoveEntry(targetBookId) {
+  document.getElementById('modal-move-entry').classList.add('hidden');
+  const idx = appData.entries.findIndex(e => e.id === currentEntryId);
+  if (idx === -1) return;
+
+  if (_isDirty) {
+    await saveEntry();
+  }
+
+  const fromBookId = currentBookId;
+  appData.entries[idx].bookId = targetBookId;
+  await saveToFile();
+
+  showToast('已移动到「' + (getBooks().find(b => b.id === targetBookId)?.name || '') + '」');
+  currentBookId = fromBookId;
+  markClean();
+  await renderBookView(fromBookId);
+  showView('book');
+}
+
 async function deleteBook(bookId) {
   const book = appData.books.find(b => b.id === bookId);
   if (!book) return;
@@ -782,6 +961,57 @@ async function deleteBook(bookId) {
   showToast('日记本已删除');
   await renderHome();
   showView('home');
+}
+
+// ============================================================
+// 导出单本日记为 Markdown
+// ============================================================
+
+function exportBookAsMarkdown(bookId) {
+  const book = getBooks().find(b => b.id === bookId);
+  if (!book) return;
+
+  const entries = getEntriesByBook(bookId);
+  const exportDate = new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
+
+  let md = `# ${book.name}\n\n`;
+  md += `> 导出时间：${exportDate}　共 ${entries.length} 篇日记\n\n`;
+  md += `---\n\n`;
+
+  if (entries.length === 0) {
+    md += '*这本日记还没有任何内容。*\n';
+  } else {
+    for (const entry of entries) {
+      const title = entry.title || '（无标题）';
+      md += `## ${title}\n\n`;
+
+      const moodLine = entry.mood ? `心情：${entry.mood}　` : '';
+      const tagsLine = (entry.tags && entry.tags.length > 0) ? `标签：${entry.tags.join('、')}　` : '';
+      const dateLine = `创建于 ${formatDate(entry.createdAt)}`;
+      md += `*${moodLine}${tagsLine}${dateLine}*\n\n`;
+
+      if (entry.imageIds && entry.imageIds.length > 0) {
+        md += `${entry.imageIds.map(() => '[图片]').join(' ')}\n\n`;
+      }
+
+      if (entry.content) {
+        md += `${entry.content}\n\n`;
+      }
+
+      md += `---\n\n`;
+    }
+  }
+
+  const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const dateStr = formatDateShort(new Date().toISOString()).replace(/-/g, '');
+  const safeName = book.name.replace(/[\\/:*?"<>|]/g, '_');
+  a.href = url;
+  a.download = `${safeName}_export_${dateStr}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('已导出为 Markdown 文件');
 }
 
 // ============================================================
@@ -939,7 +1169,18 @@ function bindEvents() {
   // 导航
   document.getElementById('btn-back').addEventListener('click', () => {
     if (currentView === 'book') { renderHome(); showView('home'); }
-    else if (currentView === 'entry') { renderBookView(currentBookId); showView('book'); }
+    else if (currentView === 'entry') {
+      if (_isDirty) {
+        showConfirm('有未保存的内容', '当前日记还有未保存的修改，返回后会丢失。确定不保存吗？', () => {
+          markClean();
+          renderBookView(currentBookId);
+          showView('book');
+        }, '不保存，直接返回', true);
+      } else {
+        renderBookView(currentBookId);
+        showView('book');
+      }
+    }
     else if (currentView === 'data') showView('home');
   });
 
@@ -952,6 +1193,10 @@ function bindEvents() {
   document.getElementById('btn-open-file').addEventListener('click', handleOpenFile);
 
   // 首页
+  document.getElementById('books-sort').addEventListener('change', e => {
+    _bookSortOrder = e.target.value;
+    renderHome();
+  });
   document.getElementById('btn-new-book').addEventListener('click', () => openBookModal('create'));
 
   // 日记本弹窗
@@ -1001,6 +1246,9 @@ function bindEvents() {
   document.getElementById('btn-edit-book').addEventListener('click', () => {
     openBookModal('edit', currentBookId);
   });
+  document.getElementById('btn-export-book').addEventListener('click', () => {
+    exportBookAsMarkdown(currentBookId);
+  });
   document.getElementById('btn-delete-book').addEventListener('click', () => {
     const book = getBooks().find(b => b.id === currentBookId);
     if (!book) return;
@@ -1014,10 +1262,68 @@ function bindEvents() {
 
   document.getElementById('btn-new-entry').addEventListener('click', createNewEntry);
 
+  document.getElementById('entries-search').addEventListener('input', e => {
+    _entrySearchQuery = e.target.value;
+    renderBookView(currentBookId);
+  });
+
+  // 条目编辑页 — 标记未保存 + 防抖自动保存
+  const autoSave = debounce(async () => {
+    if (_isDirty && currentView === 'entry' && currentEntryId) {
+      showSaveIndicator('自动保存中...');
+      await saveEntry();
+    }
+  }, 2000);
+
+  document.getElementById('entry-title-input').addEventListener('input', () => { markDirty(); autoSave(); });
+  document.getElementById('entry-content-input').addEventListener('input', () => { markDirty(); autoSave(); });
+
   // 条目编辑页
   document.getElementById('btn-save-entry').addEventListener('click', saveEntry);
   document.getElementById('btn-delete-entry').addEventListener('click', () => {
     showConfirm('删除日记', '确定要删除这篇日记吗？此操作无法撤销。', () => deleteEntry(currentEntryId));
+  });
+
+  // 情绪选择器
+  document.getElementById('mood-options').addEventListener('click', e => {
+    const btn = e.target.closest('.mood-btn[data-mood]');
+    if (!btn) return;
+    const mood = btn.dataset.mood;
+    _currentMood = (_currentMood === mood) ? '' : mood;
+    markDirty();
+    renderMoodSelector();
+    autoSave();
+  });
+  document.getElementById('btn-clear-mood').addEventListener('click', () => {
+    _currentMood = '';
+    markDirty();
+    renderMoodSelector();
+    autoSave();
+  });
+
+  // 标签输入
+  document.getElementById('entry-tag-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      const val = e.target.value.trim().replace(/,/g, '');
+      if (val && !_currentTags.includes(val) && _currentTags.length < 10) {
+        _currentTags.push(val);
+        markDirty();
+        renderTagChips();
+        autoSave();
+      }
+      e.target.value = '';
+    }
+  });
+
+  document.getElementById('btn-move-entry').addEventListener('click', openMoveEntryModal);
+  document.getElementById('modal-move-cancel').addEventListener('click', () => {
+    document.getElementById('modal-move-entry').classList.add('hidden');
+  });
+  document.getElementById('modal-move-entry').addEventListener('click', e => {
+    if (e.target === document.getElementById('modal-move-entry')) {
+      document.getElementById('modal-move-entry').classList.add('hidden');
+    }
   });
 
   document.getElementById('btn-entry-image').addEventListener('click', () => {
@@ -1029,6 +1335,7 @@ function bindEvents() {
       const { id } = await saveImageFile(file);
       _currentEntryImageIds.push(id);
     }
+    markDirty();
     renderEntryImages();
     e.target.value = '';
   });
@@ -1050,6 +1357,14 @@ function bindEvents() {
     if ((e.ctrlKey || e.metaKey) && e.key === 's' && currentView === 'entry') {
       e.preventDefault();
       saveEntry();
+    }
+  });
+
+  // 关闭/刷新标签页时保护未保存内容
+  window.addEventListener('beforeunload', e => {
+    if (_isDirty) {
+      e.preventDefault();
+      e.returnValue = '';
     }
   });
 }

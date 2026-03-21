@@ -201,6 +201,18 @@ button { cursor: pointer; border: none; outline: none; font-family: inherit; tra
   justify-content: space-between;
   margin-bottom: 20px;
 }
+.view-header-right { display: flex; align-items: center; gap: 10px; }
+.sort-select {
+  padding: 6px 10px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  cursor: pointer;
+  outline: none;
+}
+.sort-select:focus { border-color: var(--border-focus); }
 
 .subtitle {
   font-size: 0.9rem;
@@ -224,8 +236,30 @@ button { cursor: pointer; border: none; outline: none; font-family: inherit; tra
   cursor: pointer;
   box-shadow: var(--shadow-sm);
   transition: transform var(--transition), box-shadow var(--transition);
+  position: relative;
 }
 .book-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-md); }
+.book-card.pinned { border-color: var(--accent); }
+.book-pin-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.35);
+  border: none;
+  color: #fff;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity var(--transition), background var(--transition);
+}
+.book-card:hover .book-pin-btn { opacity: 1; }
+.book-pin-btn.is-pinned { opacity: 1; background: var(--accent); }
 
 .book-card-cover {
   width: 100%;
@@ -898,6 +932,172 @@ button { cursor: pointer; border: none; outline: none; font-family: inherit; tra
 }
 .size-row:last-child { border-bottom: none; }
 .size-row span:last-child { font-weight: 600; color: var(--text-primary); }
+
+/* ============================================================
+   情绪 & 标签
+   ============================================================ */
+.entry-mood-tags-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+.mood-selector, .tag-editor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.mood-label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.mood-options { display: flex; gap: 4px; flex-wrap: wrap; }
+.mood-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 1.2rem;
+  padding: 3px 5px;
+  line-height: 1;
+  transition: background var(--transition), border-color var(--transition);
+}
+.mood-btn:hover { background: var(--accent-light); }
+.mood-btn.selected { border-color: var(--accent); background: var(--accent-light); }
+.mood-btn-clear {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  padding: 3px 7px;
+}
+.tag-chips { display: flex; gap: 5px; flex-wrap: wrap; }
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--accent-light);
+  color: var(--accent);
+  border-radius: 99px;
+  padding: 2px 10px 2px 8px;
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+.tag-chip button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 0.7rem;
+  padding: 0;
+  line-height: 1;
+}
+#entry-tag-input {
+  border: none;
+  background: none;
+  outline: none;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  width: 150px;
+  padding: 2px 0;
+}
+#entry-tag-input::placeholder { color: var(--text-placeholder); }
+
+.entry-card-mood { font-size: 1rem; }
+.entry-card-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+.entry-card-tag {
+  background: var(--accent-light);
+  color: var(--accent);
+  border-radius: 99px;
+  padding: 1px 8px;
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+/* ============================================================
+   移动条目弹窗书目列表
+   ============================================================ */
+.move-book-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 280px;
+  overflow-y: auto;
+  margin-bottom: 4px;
+}
+.move-book-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  background: var(--bg-input);
+  transition: border-color var(--transition), background var(--transition);
+}
+.move-book-item:hover { border-color: var(--accent); background: var(--accent-light); }
+.move-book-item-name { font-size: 0.9rem; font-weight: 500; color: var(--text-primary); }
+.move-book-item-meta { font-size: 0.78rem; color: var(--text-secondary); }
+
+/* ============================================================
+   搜索栏
+   ============================================================ */
+.search-bar {
+  padding: 0 20px 14px;
+}
+.search-bar input {
+  width: 100%;
+  padding: 9px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color var(--transition);
+}
+.search-bar input:focus { border-color: var(--border-focus); }
+.search-bar input::placeholder { color: var(--text-placeholder); }
+
+/* ============================================================
+   加载遮罩
+   ============================================================ */
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: var(--bg-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.loading-box {
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  padding: 36px 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  box-shadow: var(--shadow-lg);
+}
+.loading-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-box p {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
 
 /* ============================================================
    响应式
