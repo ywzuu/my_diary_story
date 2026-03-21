@@ -62,7 +62,7 @@
 
           <div class="welcome-note">
             <p>数据完全存在你的电脑上，无需联网，无需注册</p>
-            <p>支持浏览器：Chrome 86+、Edge 86+、Safari 15.2+</p>
+            <p>支持浏览器：Chrome 86+、Edge 86+</p>
           </div>
         </div>
       </div>
@@ -79,9 +79,9 @@
             <p><strong>支持的浏览器：</strong></p>
             <p>• Chrome 86 及以上版本</p>
             <p>• Edge 86 及以上版本</p>
-            <p>• Safari 15.2 及以上版本（macOS/iOS）</p>
             <br/>
             <p><strong>不支持的浏览器：</strong></p>
+            <p>• Safari（不支持文件写入 API）</p>
             <p>• Firefox（暂不支持此 API）</p>
             <br/>
             <p>请切换到支持的浏览器后重新打开此页面。</p>
@@ -94,7 +94,16 @@
     <section id="view-home" class="view">
       <div class="view-header">
         <p class="subtitle">共 <span id="books-count">0</span> 本日记</p>
-        <button id="btn-new-book" class="btn-primary">+ 新建日记本</button>
+        <div class="view-header-right">
+          <select id="books-sort" class="sort-select" title="排序方式">
+            <option value="custom">自定义顺序</option>
+            <option value="updated">最近更新</option>
+            <option value="created">创建时间</option>
+            <option value="entries">条目数量</option>
+            <option value="name">名称排序</option>
+          </select>
+          <button id="btn-new-book" class="btn-primary">+ 新建日记本</button>
+        </div>
       </div>
       <div id="books-grid" class="books-grid">
         <!-- 日记本卡片由 JS 渲染 -->
@@ -117,6 +126,7 @@
           <p id="book-meta-display" class="book-meta"></p>
           <div class="book-actions">
             <button id="btn-edit-book" class="btn-secondary">编辑封面</button>
+            <button id="btn-export-book" class="btn-secondary">导出为文本</button>
             <button id="btn-delete-book" class="btn-danger-text">删除日记本</button>
           </div>
         </div>
@@ -124,6 +134,9 @@
       <div class="view-header">
         <p class="subtitle">共 <span id="entries-count">0</span> 篇日记</p>
         <button id="btn-new-entry" class="btn-primary">+ 新建日记</button>
+      </div>
+      <div class="search-bar">
+        <input id="entries-search" type="search" placeholder="搜索日记标题或内容..." autocomplete="off" />
       </div>
       <div id="entries-list" class="entries-list">
         <!-- 条目卡片由 JS 渲染 -->
@@ -144,6 +157,7 @@
         </div>
         <div class="entry-actions">
           <button id="btn-entry-image" class="btn-secondary">插入图片</button>
+          <button id="btn-move-entry" class="btn-secondary">移动到...</button>
           <button id="btn-save-entry" class="btn-primary">保存</button>
           <button id="btn-delete-entry" class="btn-danger-text">删除</button>
         </div>
@@ -155,6 +169,26 @@
         placeholder="日记标题（可留空）"
         maxlength="100"
       />
+      <div class="entry-mood-tags-bar">
+        <div class="mood-selector">
+          <span class="mood-label">心情</span>
+          <div class="mood-options" id="mood-options">
+            <button class="mood-btn" data-mood="😊" title="开心">😊</button>
+            <button class="mood-btn" data-mood="😢" title="难过">😢</button>
+            <button class="mood-btn" data-mood="😡" title="生气">😡</button>
+            <button class="mood-btn" data-mood="😴" title="疲惫">😴</button>
+            <button class="mood-btn" data-mood="🤔" title="思考">🤔</button>
+            <button class="mood-btn" data-mood="✨" title="惊喜">✨</button>
+            <button class="mood-btn" data-mood="💪" title="加油">💪</button>
+            <button class="mood-btn mood-btn-clear hidden" id="btn-clear-mood" title="清除心情">✕</button>
+          </div>
+        </div>
+        <div class="tag-editor">
+          <span class="mood-label">标签</span>
+          <div class="tag-chips" id="entry-tag-chips"></div>
+          <input id="entry-tag-input" type="text" placeholder="输入标签，按回车添加" maxlength="20" />
+        </div>
+      </div>
       <div id="entry-images-preview" class="entry-images-preview"></div>
       <textarea
         id="entry-content-input"
@@ -218,7 +252,7 @@
               <div class="location-icon">🌐</div>
               <div>
                 <strong>跨浏览器访问</strong>
-                <p>任何支持的浏览器（Chrome、Edge、Safari）都可以打开同一个数据文件，数据完全一致。</p>
+                <p>任何支持的浏览器（Chrome、Edge）都可以打开同一个数据文件，数据完全一致。</p>
               </div>
             </div>
             <div class="location-item">
@@ -291,6 +325,18 @@
     </div>
   </div>
 
+  <!-- ====== 弹窗：移动条目 ====== -->
+  <div id="modal-move-entry" class="modal-overlay hidden">
+    <div class="modal-box">
+      <h3>移动到其他日记本</h3>
+      <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:14px;">选择要移动到的日记本：</p>
+      <div id="move-entry-book-list" class="move-book-list"></div>
+      <div class="modal-actions">
+        <button id="modal-move-cancel" class="btn-secondary">取消</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ====== 弹窗：通用确认 ====== -->
   <div id="modal-confirm" class="modal-overlay hidden">
     <div class="modal-box">
@@ -300,6 +346,14 @@
         <button id="confirm-cancel" class="btn-secondary">取消</button>
         <button id="confirm-ok" class="btn-danger">确认</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ====== 加载遮罩 ====== -->
+  <div id="loading-overlay" class="loading-overlay hidden">
+    <div class="loading-box">
+      <div class="loading-spinner"></div>
+      <p id="loading-message">正在读取数据文件...</p>
     </div>
   </div>
 
